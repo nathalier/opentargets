@@ -5,7 +5,6 @@ import pandas as pd
 from pathlib import Path
 import subprocess
 
-
 TARGETS_DIR = 'targets'
 DISEASES_DIR = 'diseases'
 EVIDENCE_DIR = 'evidence'
@@ -26,7 +25,7 @@ def fetch_data(release, fmt, dir):
 
     # TODO keep status of successfully fetched data
     p = subprocess.run(["rsync", "-rtv", f"{fetch_url}", f"{local_path.resolve()}"])
-    
+
     if p.returncode != 0:
         raise IOError(f"Could not sync '{dir}''{fmt}' data in '{release}' release")
 
@@ -36,7 +35,6 @@ def run_pipeline(data_path, fmt, evidence_subdir=""):
         raise NotImplementedError("Only 'parquet' input data format is currently supported")
 
     with Client() as dask_client:
-
         # 1. Parse each evidence object and the `diseaseId`, `targetId`, and `score` fields.
         evidence_path = data_path / fmt / EVIDENCE_DIR / evidence_subdir
         targets_path = data_path / fmt / TARGETS_DIR
@@ -46,15 +44,28 @@ def run_pipeline(data_path, fmt, evidence_subdir=""):
             evidence_path, targets_path, diseases_path)
 
         evidence_df = evidence_df[['targetId', 'diseaseId', 'score']]
-        targets_df = targets_df[['id', 'approvedSymbol']]
-        diseases_df = diseases_df[['id', 'name']]
 
         # 2. For each `targetId` and `diseaseId` pair, calculate the median and 3 greatest `score`
         evidence_median_df = target_disease_aggr_median(evidence_df)
         evidence_top_scores_df = target_disease_aggr_top_scores(evidence_df)
 
-        evidence_aggregated_df = evidence_median_df\
+        evidence_aggregated_df = evidence_median_df \
             .merge(evidence_top_scores_df, how="left", on=['targetId', 'diseaseId'])
+
+        # 3. Join the targets and diseases datasets on the `targetId` = `target.id`
+        # and `diseaseId` = `disease.id` fields.
+        # 4. Add the `target.approvedSymbol` and `disease.name` fields to your table
+        targets_df = targets_df[["id", "approvedSymbol"]]
+        targets_df = targets_df.rename(columns={"id": "targetId"}).compute()
+
+        diseases_df = diseases_df[["id", "name"]]
+        diseases_df = diseases_df.rename(
+            columns={"id": "diseaseId", "name": "diseaseName"}).compute()
+
+        joined_df = diseases_df.merge(evidence_aggregated_df, how="right",
+                                      on='diseaseId', left_index=False)
+        joined_df = targets_df.merge(joined_df, how="right",
+                                     on='targetId', left_index=False)
 
 
 def read_parquet_data(evidence_path, targets_path, diseases_path):
