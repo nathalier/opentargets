@@ -36,9 +36,9 @@ def run_pipeline(data_path, fmt, evidence_subdir=""):
 
     with Client() as dask_client:
         # 1. Parse each evidence object and the `diseaseId`, `targetId`, and `score` fields.
-        evidence_path = data_path / fmt / EVIDENCE_DIR / evidence_subdir
-        targets_path = data_path / fmt / TARGETS_DIR
-        diseases_path = data_path / fmt / DISEASES_DIR
+        evidence_path = data_path / "input" / fmt / EVIDENCE_DIR / evidence_subdir
+        targets_path = data_path / "input" / fmt / TARGETS_DIR
+        diseases_path = data_path / "input" / fmt / DISEASES_DIR
 
         evidence_df, targets_df, diseases_df = read_parquet_data(
             evidence_path, targets_path, diseases_path)
@@ -66,6 +66,15 @@ def run_pipeline(data_path, fmt, evidence_subdir=""):
                                       on='diseaseId', left_index=False)
         joined_df = targets_df.merge(joined_df, how="right",
                                      on='targetId', left_index=False)
+
+        # 5. Output the resulting table in JSON format,
+        # sorted in ascending order by the median value of the `score`.
+        sorted_df = joined_df.sort_values(by="score_median", ascending=False)\
+                             .reset_index(drop=True)
+
+        output_path = data_path / "output"
+        output_path.mkdir(parents=True, exist_ok=True)
+        sorted_df.to_json(output_path / "result.json", orient="records")
 
 
 def read_parquet_data(evidence_path, targets_path, diseases_path):
@@ -106,4 +115,4 @@ if __name__ == "__main__":
     fetch_data(release, fmt, TARGETS_DIR)
     fetch_data(release, fmt, f'{EVIDENCE_DIR}/{evidence_dataset}')
 
-    run_pipeline(local_data_base_path / release / 'input', fmt, evidence_dataset)
+    run_pipeline(local_data_base_path / release, fmt, evidence_dataset)
