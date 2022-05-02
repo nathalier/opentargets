@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import dask
 import dask.dataframe as dd
 from dask.distributed import Client
