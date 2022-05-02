@@ -1,3 +1,7 @@
+import dask
+import dask.dataframe as dd
+from dask.distributed import Client
+import pandas as pd
 from pathlib import Path
 import subprocess
 
@@ -27,6 +31,23 @@ def fetch_data(release, fmt, dir):
         raise IOError(f"Could not sync '{dir}''{fmt}' data in '{release}' release")
 
 
+def run_pipeline(data_path, fmt, evidence_subdir=""):
+    if fmt != "parquet":
+        raise NotImplementedError("Only 'parquet' input data format is currently supported")
+
+    with Client() as dask_client:
+        evidence_path = data_path / fmt / EVIDENCE_DIR / evidence_subdir
+        targets_path = data_path / fmt / TARGETS_DIR
+        diseases_path = data_path / fmt / DISEASES_DIR
+
+        try:
+            evidence_df = dd.read_parquet(evidence_path)
+            targets_df = dd.read_parquet(targets_path)
+            diseases_df = dd.read_parquet(diseases_path)
+        except (IndexError, AttributeError) as e:
+            raise IOError(e, "No parquet data found in one of directories/files")
+
+
 if __name__ == "__main__":
     release = '21.11'
     fmt = 'parquet'
@@ -35,3 +56,5 @@ if __name__ == "__main__":
     fetch_data(release, fmt, DISEASES_DIR)
     fetch_data(release, fmt, TARGETS_DIR)
     fetch_data(release, fmt, f'{EVIDENCE_DIR}/{evidence_dataset}')
+
+    run_pipeline(local_data_base_path / release / 'input', fmt, evidence_dataset)
