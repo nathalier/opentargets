@@ -40,12 +40,19 @@ def run_pipeline(data_path, fmt, evidence_subdir=""):
         targets_path = data_path / fmt / TARGETS_DIR
         diseases_path = data_path / fmt / DISEASES_DIR
 
-        try:
-            evidence_df = dd.read_parquet(evidence_path)
-            targets_df = dd.read_parquet(targets_path)
-            diseases_df = dd.read_parquet(diseases_path)
-        except (IndexError, AttributeError) as e:
-            raise IOError(e, "No parquet data found in one of directories/files")
+        evidence_df, targets_df, diseases_df = read_parquet_data(
+            evidence_path, targets_path, diseases_path)
+
+
+def read_parquet_data(evidence_path, targets_path, diseases_path):
+    try:
+        evidence_df = dd.read_parquet(evidence_path)
+        targets_df = dd.read_parquet(targets_path)
+        diseases_df = dd.read_parquet(diseases_path)
+    except (IndexError, AttributeError) as e:
+        raise IOError(e, "No parquet data found in one of directories/files")
+
+    return evidence_df, targets_df, diseases_df
 
 
 if __name__ == "__main__":
