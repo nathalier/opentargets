@@ -78,6 +78,46 @@ def run_pipeline(data_path, fmt, evidence_subdir=""):
         output_path.mkdir(parents=True, exist_ok=True)
         sorted_df.to_json(output_path / "result.json", orient="records")
 
+        # 6. Targets pairs sharing common diseases
+        related_targets = get_related_targets(joined_df)
+        print(f'Number of target-target pairs sharing at least 2 common '
+              f'deseases: {related_targets}')
+
+
+def get_related_targets(df):
+    pairs_df = df[["targetId", "diseaseId"]]
+    pairs_df = _cast_to_dd(pairs_df)
+    target_diseases_df = pairs_df.groupby(["targetId"])["diseaseId"] \
+                .apply(lambda x: frozenset(x.to_list()), meta=("diseases", "object")) \
+                .to_frame() \
+                .reset_index() \
+                .compute()
+
+    # filter out target assosiated with only one disease
+    target_diseases_df = target_diseases_df[target_diseases_df\
+                    .apply(lambda row: len(row["diseases"]) > 1, axis=1)]
+
+    cartesian_df = target_diseases_df.merge(
+                    target_diseases_df, how="cross", suffixes=["_1", "_2"])
+    cartesian_df = _cast_to_dd(cartesian_df, partitions=6)
+
+    # filter out target * target self product
+    cartesian_df = cartesian_df[cartesian_df["targetId_1"] != cartesian_df["targetId_2"]]
+
+    cartesian_df["common_count"] = cartesian_df\
+                .apply(lambda row: len(row["diseases_1"].intersection(row["diseases_2"])),
+                        axis=1, meta=("interc", "object")).compute()
+
+    cartesian_df = cartesian_df[cartesian_df["common_count"] > 1].compute()
+
+    return cartesian_df.shape[0] // 2
+
+
+def _cast_to_dd(dataframe, partitions=2):
+    if isinstance(dataframe, pd.core.frame.DataFrame):
+        dataframe = dd.from_pandas(dataframe, npartitions=partitions)
+    return dataframe
+
 
 def read_parquet_data(evidence_path, targets_path, diseases_path):
     try:
